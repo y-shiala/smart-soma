@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String          @id @default(uuid()) @db.Uuid
+  email         String          @unique
+  passwordHash  String
+  displayName   String
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  preference    UserPreference?
+  progress      UserProgress[]
+  refreshTokens RefreshToken[]
+}
+
+model UserPreference {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @db.Uuid
+  grade     Grade
+  subject   String?
+  pathway   Pathway?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserProgress {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  question   String
+  subject    String?
+  grade      Grade?
+  answeredAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, answeredAt])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  familyId  String    @db.Uuid
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+}
+
+enum Grade {
+  lower_primary @map("lower-primary")
+  upper_primary @map("upper-primary")
+  junior_high   @map("junior-high")
+  senior_high   @map("senior-high")
+}
+
+enum Pathway {
+  arts_sports     @map("arts-sports")
+  social_sciences @map("social-sciences")
+  stem            @map("stem")
+}
