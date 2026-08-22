@@ -311,6 +311,361 @@ describe('Authentication (e2e)', () => {
       .send({ refreshToken: login.body.refreshToken })
       .expect(401);
   });
+
+  it('reads and updates a user preference via the protected API', async () => {
+    const login = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: testEmail, password: 'password123' })
+      .expect(201);
+
+    const initial = await request(app.getHttpServer())
+      .get('/preferences')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .expect(200);
+
+    expect(initial.body).toEqual(
+      expect.objectContaining({
+        grade: expect.any(String),
+        subject: expect.any(String),
+      }),
+    );
+
+    const updated = await request(app.getHttpServer())
+      .patch('/preferences')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .send({ grade: 'senior-high', subject: 'physics', pathway: 'stem' })
+      .expect(200);
+
+    expect(updated.body).toEqual(
+      expect.objectContaining({
+        grade: 'senior-high',
+        subject: 'physics',
+        pathway: 'stem',
+      }),
+    );
+
+    await request(app.getHttpServer())
+      .patch('/preferences')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .send({ grade: 'junior-high', pathway: 'stem' })
+      .expect(400);
+  });
+
+  it('tracks learning progress per user and rejects invalid payloads', async () => {
+    const login = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: testEmail, password: 'password123' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post('/progress')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .send({
+        question: 'What is 2 + 2?',
+        subject: 'math',
+        grade: 'senior-high',
+      })
+      .expect(201);
+
+    const stats = await request(app.getHttpServer())
+      .get('/progress')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .expect(200);
+
+    expect(stats.body).toEqual(
+      expect.objectContaining({
+        questionsAnswered: expect.any(Number),
+        todayProgress: expect.any(Number),
+        todayGoal: 5,
+      }),
+    );
+    expect(stats.body.questionsAnswered).toBeGreaterThanOrEqual(1);
+
+    await request(app.getHttpServer())
+      .post('/progress')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .send({ question: '   ' })
+      .expect(400);
+  });
+
+  it('generates an explanation through the protected learning API', async () => {
+    await request(app.getHttpServer())
+      .post('/learning/explanation')
+      .send({
+        question: 'What is 2 + 2?',
+        subject: 'mathematics',
+        grade: 'lower-primary',
+        language: 'en',
+        mode: 'step-by-step',
+      })
+      .expect(401);
+
+    const login = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: testEmail, password: 'password123' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post('/learning/explanation')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .send({
+        question: '   ',
+        subject: 'mathematics',
+        grade: 'lower-primary',
+        language: 'en',
+        mode: 'step-by-step',
+      })
+      .expect(400);
+
+    const explanation = await request(app.getHttpServer())
+      .post('/learning/explanation')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .send({
+        question: 'What is 2 + 2?',
+        subject: 'mathematics',
+        grade: 'lower-primary',
+        language: 'en',
+        mode: 'step-by-step',
+      })
+      .expect(201);
+
+    expect(explanation.body).toEqual({
+      question: 'What is 2 + 2?',
+      explanation: expect.stringContaining('mathematics'),
+      subject: 'mathematics',
+      grade: 'lower-primary',
+    });
+  });
+
+  it('generates practice questions and persists server-evaluated attempts', async () => {
+    await request(app.getHttpServer())
+      .post('/learning/practice-question')
+      .send({
+        question: 'What is 2 + 2?',
+        subject: 'mathematics',
+        grade: 'lower-primary',
+        language: 'en',
+        mode: 'step-by-step',
+      })
+      .expect(401);
+
+    const login = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: testEmail, password: 'password123' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post('/learning/practice-question')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .send({
+        question: '   ',
+        subject: 'mathematics',
+        grade: 'lower-primary',
+        language: 'en',
+        mode: 'step-by-step',
+      })
+      .expect(400);
+
+    const practice = await request(app.getHttpServer())
+      .post('/learning/practice-question')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .send({
+        question: 'What is 2 + 2?',
+        subject: 'mathematics',
+        grade: 'lower-primary',
+        language: 'en',
+        mode: 'step-by-step',
+      })
+      .expect(201);
+
+    expect(practice.body.options).toHaveLength(4);
+    expect(practice.body.correctAnswer).toBe(practice.body.options[0]);
+
+    await request(app.getHttpServer())
+      .post('/learning/attempts')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .send({
+        question: 'What is 2 + 2?',
+        subject: 'mathematics',
+        grade: 'lower-primary',
+        selectedAnswer: '   ',
+      })
+      .expect(400);
+
+    const correctAttempt = await request(app.getHttpServer())
+      .post('/learning/attempts')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .send({
+        question: 'What is 2 + 2?',
+        subject: 'mathematics',
+        grade: 'lower-primary',
+        selectedAnswer: practice.body.correctAnswer,
+      })
+      .expect(201);
+
+    expect(correctAttempt.body).toEqual(
+      expect.objectContaining({ correct: true }),
+    );
+
+    const incorrectAttempt = await request(app.getHttpServer())
+      .post('/learning/attempts')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .send({
+        question: 'What is 2 + 2?',
+        subject: 'mathematics',
+        grade: 'lower-primary',
+        selectedAnswer: practice.body.options[1],
+      })
+      .expect(201);
+
+    expect(incorrectAttempt.body).toEqual(
+      expect.objectContaining({ correct: false }),
+    );
+
+    const attempts = await prisma.learningAttempt.findMany({
+      where: { userId: login.body.user.id },
+    });
+    expect(attempts).toHaveLength(2);
+    expect(attempts.every((attempt) => attempt.userId === login.body.user.id)).toBe(true);
+  });
+
+  it('isolates attempts to the authenticated user', async () => {
+    const otherEmail = createTestEmail(testEmails);
+    await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        displayName: 'Other User',
+        email: otherEmail,
+        password: 'password123',
+        grade: 'lower-primary',
+      })
+      .expect(201);
+
+    const login = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: otherEmail, password: 'password123' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post('/learning/attempts')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .send({
+        question: 'Other user question',
+        subject: 'mathematics',
+        grade: 'lower-primary',
+        selectedAnswer: 'Read the question carefully and identify the goal.',
+        userId: registration.body.user.id,
+      })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .post('/learning/attempts')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .send({
+        question: 'Other user question',
+        subject: 'mathematics',
+        grade: 'lower-primary',
+        selectedAnswer: 'Read the question carefully and identify the goal.',
+      })
+      .expect(201);
+
+    const attempts = await prisma.learningAttempt.findMany({
+      where: { userId: login.body.user.id },
+    });
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0].userId).not.toBe(registration.body.user.id);
+  });
+
+  it('returns database-backed progress summaries and recent history per user', async () => {
+    await request(app.getHttpServer()).get('/progress').expect(401);
+    await request(app.getHttpServer()).get('/progress/history').expect(401);
+
+    const emptyEmail = createTestEmail(testEmails);
+    const emptyRegistration = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        displayName: 'Empty Progress User',
+        email: emptyEmail,
+        password: 'password123',
+        grade: 'lower-primary',
+      })
+      .expect(201);
+
+    const emptySummary = await request(app.getHttpServer())
+      .get('/progress')
+      .set('Authorization', `Bearer ${emptyRegistration.body.accessToken}`)
+      .expect(200);
+    expect(emptySummary.body).toEqual(
+      expect.objectContaining({
+        totalLearningActivities: 0,
+        totalPracticeAttempts: 0,
+        correctAttempts: 0,
+        incorrectAttempts: 0,
+        accuracyPercentage: 0,
+        questionsPracticed: [],
+      }),
+    );
+
+    const activeEmail = createTestEmail(testEmails);
+    const activeRegistration = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        displayName: 'Active Progress User',
+        email: activeEmail,
+        password: 'password123',
+        grade: 'lower-primary',
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post('/progress')
+      .set('Authorization', `Bearer ${activeRegistration.body.accessToken}`)
+      .send({ question: 'Explain addition', subject: 'mathematics', grade: 'lower-primary' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post('/learning/attempts')
+      .set('Authorization', `Bearer ${activeRegistration.body.accessToken}`)
+      .send({
+        question: 'Explain addition',
+        subject: 'mathematics',
+        grade: 'lower-primary',
+        selectedAnswer: 'Read the question carefully and identify the goal.',
+      })
+      .expect(201);
+
+    const activeSummary = await request(app.getHttpServer())
+      .get('/progress')
+      .set('Authorization', `Bearer ${activeRegistration.body.accessToken}`)
+      .expect(200);
+    expect(activeSummary.body).toEqual(
+      expect.objectContaining({
+        totalLearningActivities: 2,
+        totalPracticeAttempts: 1,
+        correctAttempts: 1,
+        incorrectAttempts: 0,
+        accuracyPercentage: 100,
+        questionsPracticed: ['Explain addition'],
+      }),
+    );
+
+    const history = await request(app.getHttpServer())
+      .get('/progress/history')
+      .set('Authorization', `Bearer ${activeRegistration.body.accessToken}`)
+      .expect(200);
+    expect(history.body).toHaveLength(2);
+    expect(history.body[0].type).toBe('practice-attempt');
+    expect(history.body[1].type).toBe('explanation');
+    expect(new Date(history.body[0].timestamp).getTime()).toBeGreaterThanOrEqual(
+      new Date(history.body[1].timestamp).getTime(),
+    );
+
+    const isolatedHistory = await request(app.getHttpServer())
+      .get('/progress/history')
+      .set('Authorization', `Bearer ${emptyRegistration.body.accessToken}`)
+      .expect(200);
+    expect(isolatedHistory.body).toEqual([]);
+  });
 });
 
 function hashToken(token: string): string {

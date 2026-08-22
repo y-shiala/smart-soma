@@ -16,6 +16,7 @@ model User {
   updatedAt     DateTime        @updatedAt
   preference    UserPreference?
   progress      UserProgress[]
+  learningAttempts LearningAttempt[]
   refreshTokens RefreshToken[]
 }
 
@@ -38,6 +39,21 @@ model UserProgress {
   grade      Grade?
   answeredAt DateTime @default(now())
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, answeredAt])
+}
+
+model LearningAttempt {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  question       String
+  subject        String
+  grade          Grade
+  selectedAnswer String
+  correct        Boolean
+  answeredAt     DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([userId, answeredAt])

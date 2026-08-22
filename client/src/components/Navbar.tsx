@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { BookOpen, Home, GraduationCap, Settings, LogIn, LogOut, X } from 'lucide-react';
+import { BookOpen, Home, GraduationCap, Settings, BarChart3, LogIn, LogOut, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { LanguageToggle } from '@/components/LanguageToggle';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -24,6 +24,7 @@ export function Navbar() {
   const navLinks = [
     { path: '/', label: language === 'en' ? 'Home' : 'Nyumbani', icon: Home },
     { path: '/learn', label: language === 'en' ? 'Learn' : 'Jifunze', icon: GraduationCap },
+    { path: '/progress', label: language === 'en' ? 'Progress' : 'Maendeleo', icon: BarChart3 },
     { path: '/settings', label: language === 'en' ? 'Settings' : 'Mipangilio', icon: Settings },
   ];
 

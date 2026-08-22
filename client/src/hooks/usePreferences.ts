@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { apiFetch } from '@/lib/api';
 import { useAuth } from './useAuth';
 
 export interface StudentPreferences {
@@ -21,41 +21,37 @@ export function usePreferences() {
   const [preferences, setPreferencesState] = useState<StudentPreferences>(defaultPreferences);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load preferences from database or localStorage
-  useEffect(() => {
-    const loadPreferences = async () => {
-      if (user) {
-        // Load from database for logged-in users
-        const { data, error } = await supabase
-          .from('user_preferences')
-          .select('grade, subject, pathway')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        
-        if (data && !error) {
-          setPreferencesState({
-            grade: data.grade || defaultPreferences.grade,
-            subject: data.subject || defaultPreferences.subject,
-            pathway: data.pathway || undefined,
-          });
-        }
-      } else {
-        // Load from localStorage for guests
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          try {
-            const parsed = JSON.parse(stored);
-            setPreferencesState({ ...defaultPreferences, ...parsed });
-          } catch {
-            setPreferencesState(defaultPreferences);
-          }
+  const loadPreferences = useCallback(async () => {
+    if (user) {
+      try {
+        const data = await apiFetch<{ grade: string; subject: string; pathway?: string | null }>('/preferences');
+        setPreferencesState({
+          grade: data.grade || defaultPreferences.grade,
+          subject: data.subject || defaultPreferences.subject,
+          pathway: data.pathway || undefined,
+        });
+      } catch (error) {
+        console.error('Error loading preferences:', error);
+      }
+    } else {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          setPreferencesState({ ...defaultPreferences, ...parsed });
+        } catch {
+          setPreferencesState(defaultPreferences);
         }
       }
-      setIsLoaded(true);
-    };
+    }
 
-    loadPreferences();
+    setIsLoaded(true);
   }, [user]);
+
+  // Load preferences from database or localStorage
+  useEffect(() => {
+    void loadPreferences();
+  }, [loadPreferences]);
 
   const setPreferences = useCallback(async (newPrefs: Partial<StudentPreferences>) => {
     const updated = { ...preferences, ...newPrefs };
@@ -68,17 +64,25 @@ export function usePreferences() {
     setPreferencesState(updated);
 
     if (user) {
-      // Save to database for logged-in users
-      await supabase
-        .from('user_preferences')
-        .update({
-          grade: updated.grade,
-          subject: updated.subject,
-          pathway: updated.pathway || null,
-        })
-        .eq('user_id', user.id);
+      try {
+        const data = await apiFetch<{ grade: string; subject: string; pathway?: string | null }>('/preferences', {
+          method: 'PATCH',
+          body: JSON.stringify({
+            grade: updated.grade,
+            subject: updated.subject,
+            pathway: updated.pathway || undefined,
+          }),
+        });
+
+        setPreferencesState({
+          grade: data.grade || defaultPreferences.grade,
+          subject: data.subject || defaultPreferences.subject,
+          pathway: data.pathway || undefined,
+        });
+      } catch (error) {
+        console.error('Error saving preferences:', error);
+      }
     } else {
-      // Save to localStorage for guests
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     }
   }, [user, preferences]);
