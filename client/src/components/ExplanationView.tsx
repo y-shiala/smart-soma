@@ -13,12 +13,7 @@ import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useState, useEffect } from "react";
-import {
-  generatePracticeQuestion,
-  submitPracticeAttempt,
-  type PracticeAttemptResult,
-  type PracticeQuestion,
-} from "@/lib/api/ai";
+import { type PracticeQuestion } from "@/lib/api/ai";
 
 type ExplanationMode = "step-by-step" | "direct";
 
@@ -29,7 +24,17 @@ interface ExplanationViewProps {
   explanation: string;
   isStreaming: boolean;
   explanationMode: ExplanationMode | null;
+  practiceQuestion: PracticeQuestion | null;
+  explanationStatus: "idle" | "loading" | "success" | "error";
+  selectedAnswer: number | null;
+  correctness: boolean | null;
+  practiceStatus: "idle" | "loading" | "success" | "error";
+  answerStatus: "idle" | "loading" | "success" | "error";
+  error: string | null;
   onModeSelect: (mode: ExplanationMode) => void;
+  onRetryExplanation: (mode: ExplanationMode) => void;
+  onRequestPractice: () => void;
+  onAnswerSelect: (index: number) => void;
   onBack: () => void;
   onAskAnother: () => void;
   onSaveProgress: (
@@ -46,22 +51,23 @@ export function ExplanationView({
   explanation,
   isStreaming,
   explanationMode,
+  practiceQuestion,
+  explanationStatus,
+  selectedAnswer,
+  correctness,
+  practiceStatus,
+  answerStatus,
+  error,
   onModeSelect,
+  onRetryExplanation,
+  onRequestPractice,
+  onAnswerSelect,
   onBack,
   onAskAnother,
   onSaveProgress,
 }: ExplanationViewProps) {
   const { t, language } = useLanguage();
-  const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
-  const [showResult, setShowResult] = useState(false);
-  const [attemptResult, setAttemptResult] =
-    useState<PracticeAttemptResult | null>(null);
-  const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
   const [showHint, setShowHint] = useState(false);
-  const [practiceQuestion, setPracticeQuestion] =
-    useState<PracticeQuestion | null>(null);
-  const [loadingPractice, setLoadingPractice] = useState(false);
-  const [practiceError, setPracticeError] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [progressSaved, setProgressSaved] = useState(false);
 
@@ -147,68 +153,26 @@ export function ExplanationView({
       ? explanationSteps
       : explanationSteps.slice(0, currentStep + 1);
 
-  // Generate practice question when all steps are shown and streaming is done
   useEffect(() => {
     if (
+      explanationMode &&
       !isStreaming &&
       explanation &&
       allStepsShown &&
       !practiceQuestion &&
-      !loadingPractice
+      practiceStatus !== "loading"
     ) {
-      setLoadingPractice(true);
-      setPracticeError(null);
-
-      generatePracticeQuestion({
-        topic: question,
-        subject,
-        grade,
-        difficulty: "easy",
-        language,
-        mode: explanationMode ?? "direct",
-      })
-        .then(setPracticeQuestion)
-        .catch((err) => {
-          console.error("Failed to generate practice question:", err);
-          setPracticeError(err.message);
-        })
-        .finally(() => setLoadingPractice(false));
+      onRequestPractice();
     }
   }, [
-    isStreaming,
-    explanation,
-    question,
-    subject,
-    language,
-    practiceQuestion,
-    loadingPractice,
     allStepsShown,
+    explanation,
+    explanationMode,
+    isStreaming,
+    onRequestPractice,
+    practiceQuestion,
+    practiceStatus,
   ]);
-
-  const handleAnswerSelect = async (index: number) => {
-    setSelectedAnswer(index);
-    setIsSubmittingAnswer(true);
-    setPracticeError(null);
-
-    try {
-      const result = await submitPracticeAttempt({
-        question,
-        subject,
-        grade,
-        selectedAnswer: practiceQuestion?.options[index] ?? "",
-      });
-      setAttemptResult(result);
-      setShowResult(true);
-    } catch (error) {
-      setPracticeError(
-        error instanceof Error
-          ? error.message
-          : "Unable to submit your answer.",
-      );
-    } finally {
-      setIsSubmittingAnswer(false);
-    }
-  };
 
   const handleNextStep = () => {
     if (currentStep < explanationSteps.length - 1) {
@@ -216,7 +180,8 @@ export function ExplanationView({
     }
   };
 
-  const isCorrect = attemptResult?.correct ?? false;
+  const isCorrect = correctness ?? false;
+  const showResult = correctness !== null;
 
   return (
     <motion.div
@@ -354,6 +319,21 @@ export function ExplanationView({
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {explanationStatus === "error" && (
+                  <div className="space-y-3 rounded-xl bg-destructive/10 p-4 text-destructive">
+                    <p className="text-sm">
+                      {error || "Unable to generate an explanation."}
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        explanationMode && onRetryExplanation(explanationMode)
+                      }
+                    >
+                      Retry explanation
+                    </Button>
+                  </div>
+                )}
                 {visibleSteps.length > 0 ? (
                   visibleSteps.map((step, index) => (
                     <motion.div
@@ -437,127 +417,156 @@ export function ExplanationView({
         )}
 
         {/* Practice Question Card - only show after all steps are revealed */}
-        {explanationMode !== null && !isStreaming && allStepsShown && (
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.4, delay: 0.2, ease: "easeOut" }}
-          >
-            <Card className="border-secondary/20 bg-secondary/5 transition-shadow duration-300 hover:shadow-md">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Sparkles className="w-5 h-5 text-secondary" />
-                  {t("tryThis")}
-                  {loadingPractice && (
-                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
+        {explanationStatus === "success" &&
+          explanation &&
+          explanationMode !== null &&
+          !isStreaming &&
+          allStepsShown && (
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.4, delay: 0.2, ease: "easeOut" }}
+            >
+              <Card className="border-secondary/20 bg-secondary/5 transition-shadow duration-300 hover:shadow-md">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Sparkles className="w-5 h-5 text-secondary" />
+                    {t("tryThis")}
+                    {practiceStatus === "loading" && (
+                      <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {practiceStatus === "error" && (
+                    <div className="space-y-3">
+                      <p className="text-destructive text-sm">
+                        {error || "Unable to prepare a practice question."}
+                      </p>
+                      <Button variant="outline" onClick={onRequestPractice}>
+                        Retry practice question
+                      </Button>
+                    </div>
                   )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {practiceError && (
-                  <p className="text-destructive text-sm">{practiceError}</p>
-                )}
 
-                {practiceQuestion && (
-                  <>
-                    <p className="text-lg font-semibold text-foreground">
-                      {practiceQuestion.question}
-                    </p>
+                  {practiceQuestion && (
+                    <>
+                      <p className="text-lg font-semibold text-foreground">
+                        {practiceQuestion.question}
+                      </p>
 
-                    <div className="grid gap-3">
-                      {practiceQuestion.options.map((option, index) => (
-                        <motion.button
-                          key={index}
-                          whileTap={{ scale: 0.98 }}
-                          onClick={() =>
-                            !showResult &&
-                            !isSubmittingAnswer &&
-                            handleAnswerSelect(index)
-                          }
-                          disabled={showResult || isSubmittingAnswer}
-                          className={`p-4 rounded-xl text-left font-medium transition-all duration-200 ${
-                            showResult
-                              ? index === practiceQuestion.correctIndex
-                                ? "bg-success/10 border-2 border-success text-success"
-                                : selectedAnswer === index
-                                  ? "bg-destructive/10 border-2 border-destructive text-destructive"
-                                  : "bg-muted text-muted-foreground"
-                              : "bg-muted hover:bg-primary/5 hover:border-primary/30 border-2 border-transparent text-foreground"
+                      <div className="grid gap-3">
+                        {practiceQuestion.options.map((option, index) => (
+                          <motion.button
+                            key={index}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() =>
+                              !showResult &&
+                              answerStatus !== "loading" &&
+                              answerStatus !== "success" &&
+                              onAnswerSelect(index)
+                            }
+                            disabled={
+                              showResult ||
+                              answerStatus === "loading" ||
+                              answerStatus === "success"
+                            }
+                            className={`p-4 rounded-xl text-left font-medium transition-all duration-200 ${
+                              showResult
+                                ? index === practiceQuestion.correctIndex
+                                  ? "bg-success/10 border-2 border-success text-success"
+                                  : selectedAnswer === index
+                                    ? "bg-destructive/10 border-2 border-destructive text-destructive"
+                                    : "bg-muted text-muted-foreground"
+                                : "bg-muted hover:bg-primary/5 hover:border-primary/30 border-2 border-transparent text-foreground"
+                            }`}
+                          >
+                            <span className="inline-flex items-center gap-3">
+                              <span className="w-8 h-8 rounded-full bg-background flex items-center justify-center text-sm font-bold">
+                                {String.fromCharCode(65 + index)}
+                              </span>
+                              {option}
+                              {showResult &&
+                                index === practiceQuestion.correctIndex && (
+                                  <CheckCircle2 className="w-5 h-5 ml-auto" />
+                                )}
+                            </span>
+                          </motion.button>
+                        ))}
+                      </div>
+
+                      {!showResult && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowHint(!showHint)}
+                          className="text-muted-foreground"
+                        >
+                          <HelpCircle className="w-4 h-4 mr-2" />
+                          {t("hint")}
+                        </Button>
+                      )}
+
+                      {showHint && !showResult && (
+                        <motion.p
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          className="text-sm text-muted-foreground bg-muted p-3 rounded-xl"
+                        >
+                          {practiceQuestion.hint}
+                        </motion.p>
+                      )}
+
+                      {showResult && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className={`p-4 rounded-xl ${
+                            isCorrect
+                              ? "bg-success/10 text-success"
+                              : "bg-warning/10 text-warning-foreground"
                           }`}
                         >
-                          <span className="inline-flex items-center gap-3">
-                            <span className="w-8 h-8 rounded-full bg-background flex items-center justify-center text-sm font-bold">
-                              {String.fromCharCode(65 + index)}
-                            </span>
-                            {option}
-                            {showResult &&
-                              index === practiceQuestion.correctIndex && (
-                                <CheckCircle2 className="w-5 h-5 ml-auto" />
-                              )}
-                          </span>
-                        </motion.button>
-                      ))}
-                    </div>
-
-                    {!showResult && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setShowHint(!showHint)}
-                        className="text-muted-foreground"
-                      >
-                        <HelpCircle className="w-4 h-4 mr-2" />
-                        {t("hint")}
-                      </Button>
-                    )}
-
-                    {showHint && !showResult && (
-                      <motion.p
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        className="text-sm text-muted-foreground bg-muted p-3 rounded-xl"
-                      >
-                        {practiceQuestion.hint}
-                      </motion.p>
-                    )}
-
-                    {showResult && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className={`p-4 rounded-xl ${
-                          isCorrect
-                            ? "bg-success/10 text-success"
-                            : "bg-warning/10 text-warning-foreground"
-                        }`}
-                      >
-                        <p className="font-bold text-lg">
-                          {isCorrect ? t("correct") : t("tryAgain")}
-                        </p>
-                        {showResult &&
-                          (attemptResult?.explanation ||
-                            practiceQuestion.explanation) && (
+                          <p className="font-bold text-lg">
+                            {isCorrect ? t("correct") : t("tryAgain")}
+                          </p>
+                          {showResult && practiceQuestion.explanation && (
                             <p className="text-sm mt-2 opacity-80">
-                              {attemptResult?.explanation ||
-                                practiceQuestion.explanation}
+                              {practiceQuestion.explanation}
                             </p>
                           )}
-                      </motion.div>
-                    )}
-                  </>
-                )}
+                        </motion.div>
+                      )}
+                    </>
+                  )}
 
-                {!practiceQuestion && !loadingPractice && !practiceError && (
-                  <p className="text-muted-foreground text-sm">
-                    {language === "sw"
-                      ? "Inaandaa swali la mazoezi..."
-                      : "Preparing practice question..."}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
+                  {answerStatus === "error" && selectedAnswer !== null && (
+                    <div className="space-y-3">
+                      <p className="text-destructive text-sm">
+                        {error || "Unable to submit your answer."}
+                      </p>
+                      <Button
+                        variant="outline"
+                        onClick={() => onAnswerSelect(selectedAnswer)}
+                      >
+                        Retry answer
+                      </Button>
+                    </div>
+                  )}
+
+                  {!practiceQuestion &&
+                    practiceStatus !== "loading" &&
+                    practiceStatus !== "error" && (
+                      <p className="text-muted-foreground text-sm">
+                        {language === "sw"
+                          ? "Inaandaa swali la mazoezi..."
+                          : "Preparing practice question..."}
+                      </p>
+                    )}
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
 
         {/* Actions */}
         <div className="flex gap-3">

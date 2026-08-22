@@ -1,12 +1,21 @@
-import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { BookOpen, Home, GraduationCap, Settings, BarChart3, LogIn, LogOut, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { LanguageToggle } from '@/components/LanguageToggle';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { useAuth } from '@/hooks/useAuth';
-import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
+import { useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import {
+  BookOpen,
+  Home,
+  GraduationCap,
+  Settings,
+  BarChart3,
+  LogIn,
+  LogOut,
+  X,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { LanguageToggle } from "@/components/LanguageToggle";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 export function Navbar() {
   const navigate = useNavigate();
@@ -17,15 +26,29 @@ export function Navbar() {
 
   const handleSignOut = async () => {
     await signOut();
-    toast.success(language === 'en' ? 'Signed out successfully' : 'Umetoka kikamilifu');
-    navigate('/');
+    toast.success(
+      language === "en" ? "Signed out successfully" : "Umetoka kikamilifu",
+    );
+    navigate("/");
   };
 
   const navLinks = [
-    { path: '/', label: language === 'en' ? 'Home' : 'Nyumbani', icon: Home },
-    { path: '/learn', label: language === 'en' ? 'Learn' : 'Jifunze', icon: GraduationCap },
-    { path: '/progress', label: language === 'en' ? 'Progress' : 'Maendeleo', icon: BarChart3 },
-    { path: '/settings', label: language === 'en' ? 'Settings' : 'Mipangilio', icon: Settings },
+    { path: "/", label: language === "en" ? "Home" : "Nyumbani", icon: Home },
+    {
+      path: "/learn",
+      label: language === "en" ? "Learn" : "Jifunze",
+      icon: GraduationCap,
+    },
+    {
+      path: "/progress",
+      label: language === "en" ? "Progress" : "Maendeleo",
+      icon: BarChart3,
+    },
+    {
+      path: "/settings",
+      label: language === "en" ? "Settings" : "Mipangilio",
+      icon: Settings,
+    },
   ];
 
   return (
@@ -35,17 +58,19 @@ export function Navbar() {
         {!user && showBanner && (
           <div className="bg-primary/10 px-3 py-1.5 flex items-center justify-center gap-2 text-xs">
             <span className="text-muted-foreground truncate">
-              {language === 'en' ? 'Sign in to save progress' : 'Ingia kuhifadhi maendeleo'}
+              {language === "en"
+                ? "Sign in to save progress"
+                : "Ingia kuhifadhi maendeleo"}
             </span>
-            <Button 
-              variant="link" 
-              size="sm" 
+            <Button
+              variant="link"
+              size="sm"
               className="text-primary p-0 h-auto text-xs font-medium"
-              onClick={() => navigate('/auth')}
+              onClick={() => navigate("/auth")}
             >
-              {language === 'en' ? 'Sign in' : 'Ingia'}
+              {language === "en" ? "Sign in" : "Ingia"}
             </Button>
-            <button 
+            <button
               onClick={() => setShowBanner(false)}
               className="text-muted-foreground hover:text-foreground ml-1"
             >
@@ -56,14 +81,16 @@ export function Navbar() {
 
         <div className="container flex items-center justify-between h-14 px-4">
           {/* Logo */}
-          <div 
-            className="flex items-center gap-2 cursor-pointer" 
-            onClick={() => navigate('/')}
+          <div
+            className="flex items-center gap-2 cursor-pointer"
+            onClick={() => navigate("/")}
           >
             <div className="w-9 h-9 bg-primary rounded-xl flex items-center justify-center">
               <BookOpen className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="font-bold text-lg text-foreground hidden sm:block">Soma Smart</span>
+            <span className="font-bold text-lg text-foreground hidden sm:block">
+              Soma Smart
+            </span>
           </div>
 
           {/* Desktop Navigation Links */}
@@ -76,7 +103,7 @@ export function Navbar() {
                 onClick={() => navigate(link.path)}
                 className={cn(
                   "gap-2",
-                  location.pathname === link.path && "bg-muted text-primary"
+                  location.pathname === link.path && "bg-muted text-primary",
                 )}
               >
                 <link.icon className="w-4 h-4" />
@@ -88,18 +115,23 @@ export function Navbar() {
           {/* Right Actions */}
           <div className="flex items-center gap-2">
             <LanguageToggle />
-            
+
             {user ? (
               <Button variant="outline" size="sm" onClick={handleSignOut}>
                 <LogOut className="w-4 h-4 sm:mr-2" />
                 <span className="hidden sm:inline">
-                  {language === 'en' ? 'Sign Out' : 'Toka'}
+                  {language === "en" ? "Sign Out" : "Toka"}
                 </span>
               </Button>
             ) : (
-              <Button variant="default" size="sm" onClick={() => navigate('/auth')} className="hidden sm:flex">
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => navigate("/auth")}
+                className="hidden sm:flex"
+              >
                 <LogIn className="w-4 h-4 mr-2" />
-                {language === 'en' ? 'Sign In' : 'Ingia'}
+                {language === "en" ? "Sign In" : "Ingia"}
               </Button>
             )}
           </div>
@@ -115,9 +147,9 @@ export function Navbar() {
               onClick={() => navigate(link.path)}
               className={cn(
                 "flex flex-col items-center justify-center gap-1 px-4 py-2 rounded-lg transition-colors",
-                location.pathname === link.path 
-                  ? "text-primary" 
-                  : "text-muted-foreground hover:text-foreground"
+                location.pathname === link.path
+                  ? "text-primary"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               <link.icon className="w-5 h-5" />
@@ -126,11 +158,13 @@ export function Navbar() {
           ))}
           {!user && (
             <button
-              onClick={() => navigate('/auth')}
+              onClick={() => navigate("/auth")}
               className="flex flex-col items-center justify-center gap-1 px-4 py-2 rounded-lg text-primary"
             >
               <LogIn className="w-5 h-5" />
-              <span className="text-xs font-medium">{language === 'en' ? 'Sign In' : 'Ingia'}</span>
+              <span className="text-xs font-medium">
+                {language === "en" ? "Sign In" : "Ingia"}
+              </span>
             </button>
           )}
         </div>
