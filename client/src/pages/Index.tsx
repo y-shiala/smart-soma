@@ -88,6 +88,12 @@ function HomeContent() {
         subject={learningSession.session.subject}
         grade={learningSession.session.grade}
         explanation={learningSession.session.explanation}
+        lesson={learningSession.session.lesson}
+        currentTeachingStep={learningSession.session.currentTeachingStep}
+        learnerAnswer={learningSession.session.learnerAnswer}
+        feedback={learningSession.session.feedback}
+        teachingEvaluation={learningSession.session.teachingEvaluation}
+        stage={learningSession.session.stage}
         isStreaming={learningSession.explanationStatus === "loading"}
         explanationMode={learningSession.session.explanationMode}
         practiceQuestion={learningSession.session.practiceQuestion}
@@ -96,11 +102,18 @@ function HomeContent() {
         explanationStatus={learningSession.explanationStatus}
         practiceStatus={learningSession.practiceStatus}
         answerStatus={learningSession.answerStatus}
+        teachingCheckStatus={learningSession.teachingCheckStatus}
         error={learningSession.error}
         onModeSelect={handleModeSelect}
         onRetryExplanation={handleModeSelect}
         onRequestPractice={() => learningSession.requestPractice(language)}
         onAnswerSelect={learningSession.submitAnswer}
+        onTeachingAnswer={(answer) =>
+          learningSession.submitTeachingAnswer(answer, language)
+        }
+        onTeachingAnswerChange={learningSession.setLearnerAnswer}
+        onNextTeachingStep={learningSession.nextTeachingStep}
+        onRetryTeachingAnswer={learningSession.retryTeachingAnswer}
         onBack={handleBack}
         onAskAnother={handleAskAnother}
         onSaveProgress={saveProgress}

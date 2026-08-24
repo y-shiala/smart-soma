@@ -13,7 +13,11 @@ import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useState, useEffect } from "react";
-import { type PracticeQuestion } from "@/lib/api/ai";
+import {
+  type PracticeQuestion,
+  type TeachingEvaluationResult,
+  type TeachingStep,
+} from "@/lib/api/ai";
 
 type ExplanationMode = "step-by-step" | "direct";
 
@@ -22,6 +26,12 @@ interface ExplanationViewProps {
   subject: string;
   grade: string;
   explanation: string;
+  lesson: TeachingStep[];
+  currentTeachingStep: number;
+  learnerAnswer: string;
+  feedback: string;
+  teachingEvaluation: TeachingEvaluationResult | null;
+  stage: string;
   isStreaming: boolean;
   explanationMode: ExplanationMode | null;
   practiceQuestion: PracticeQuestion | null;
@@ -30,11 +40,16 @@ interface ExplanationViewProps {
   correctness: boolean | null;
   practiceStatus: "idle" | "loading" | "success" | "error";
   answerStatus: "idle" | "loading" | "success" | "error";
+  teachingCheckStatus: "idle" | "loading" | "success" | "error";
   error: string | null;
   onModeSelect: (mode: ExplanationMode) => void;
   onRetryExplanation: (mode: ExplanationMode) => void;
   onRequestPractice: () => void;
   onAnswerSelect: (index: number) => void;
+  onTeachingAnswer: (answer: string) => void;
+  onTeachingAnswerChange: (answer: string) => void;
+  onNextTeachingStep: () => void;
+  onRetryTeachingAnswer: () => void;
   onBack: () => void;
   onAskAnother: () => void;
   onSaveProgress: (
@@ -49,6 +64,12 @@ export function ExplanationView({
   subject,
   grade,
   explanation,
+  lesson,
+  currentTeachingStep,
+  learnerAnswer,
+  feedback,
+  teachingEvaluation,
+  stage,
   isStreaming,
   explanationMode,
   practiceQuestion,
@@ -57,11 +78,16 @@ export function ExplanationView({
   correctness,
   practiceStatus,
   answerStatus,
+  teachingCheckStatus,
   error,
   onModeSelect,
   onRetryExplanation,
   onRequestPractice,
   onAnswerSelect,
+  onTeachingAnswer,
+  onTeachingAnswerChange,
+  onNextTeachingStep,
+  onRetryTeachingAnswer,
   onBack,
   onAskAnother,
   onSaveProgress,
@@ -70,6 +96,7 @@ export function ExplanationView({
   const [showHint, setShowHint] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [progressSaved, setProgressSaved] = useState(false);
+  const activeTeachingStep = lesson[currentTeachingStep];
 
   // Save progress when explanation streaming completes
   useEffect(() => {
@@ -160,7 +187,8 @@ export function ExplanationView({
       explanation &&
       allStepsShown &&
       !practiceQuestion &&
-      practiceStatus !== "loading"
+      practiceStatus !== "loading" &&
+      (!lesson.length || stage === "practice" || stage === "result")
     ) {
       onRequestPractice();
     }
@@ -334,7 +362,97 @@ export function ExplanationView({
                     </Button>
                   </div>
                 )}
-                {visibleSteps.length > 0 ? (
+                {activeTeachingStep && (
+                  <div className="space-y-4">
+                    <div className="rounded-xl bg-muted/50 p-4">
+                      <p className="font-bold text-foreground">
+                        {activeTeachingStep.concept}
+                      </p>
+                      <p className="mt-2 whitespace-pre-line text-foreground">
+                        {activeTeachingStep.explanation}
+                      </p>
+                    </div>
+                    {stage === "teaching" && (
+                      <div className="space-y-3">
+                        <p className="font-medium text-foreground">
+                          {activeTeachingStep.checkQuestion}
+                        </p>
+                        <input
+                          value={learnerAnswer}
+                          onChange={(event) =>
+                            onTeachingAnswerChange(event.target.value)
+                          }
+                          className="w-full rounded-xl border-2 border-border bg-background px-4 py-3 text-foreground"
+                          placeholder="Type your answer"
+                        />
+                        <Button
+                          disabled={
+                            !learnerAnswer.trim() ||
+                            teachingCheckStatus === "loading"
+                          }
+                          onClick={() => onTeachingAnswer(learnerAnswer)}
+                        >
+                          {teachingCheckStatus === "loading"
+                            ? "Checking..."
+                            : "Check answer"}
+                        </Button>
+                      </div>
+                    )}
+                    {teachingCheckStatus === "error" && (
+                      <div className="space-y-3 rounded-xl bg-destructive/10 p-4 text-destructive">
+                        <p>{error || "Unable to evaluate your answer."}</p>
+                        <Button
+                          variant="outline"
+                          onClick={onRetryTeachingAnswer}
+                        >
+                          Retry check
+                        </Button>
+                      </div>
+                    )}
+                    {stage === "feedback" && (
+                      <div
+                        className={
+                          teachingEvaluation?.status === "correct"
+                            ? "rounded-xl bg-success/10 p-4 text-success"
+                            : "rounded-xl bg-warning/10 p-4 text-warning-foreground"
+                        }
+                      >
+                        <p className="font-bold">
+                          {teachingEvaluation?.status === "correct"
+                            ? "Correct! ✅"
+                            : teachingEvaluation?.status === "partial"
+                              ? "You're on the right track."
+                              : teachingEvaluation?.status === "unclear"
+                                ? "Let's look at this another way."
+                                : teachingEvaluation?.status === "wrong_method"
+                                  ? "Let's use the requested method."
+                                  : "Not quite."}
+                        </p>
+                        <p className="mt-2">{feedback}</p>
+                        {teachingEvaluation?.status !== "correct" && (
+                          <p className="mt-2 text-sm">
+                            {teachingEvaluation?.hint}
+                          </p>
+                        )}
+                        <Button
+                          className="mt-3"
+                          onClick={
+                            teachingEvaluation?.status === "correct"
+                              ? onNextTeachingStep
+                              : onRetryTeachingAnswer
+                          }
+                        >
+                          {teachingEvaluation?.status === "correct"
+                            ? currentTeachingStep < lesson.length - 1
+                              ? "Next step"
+                              : "Continue to practice"
+                            : "Try again"}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {!lesson.length && visibleSteps.length > 0 ? (
                   visibleSteps.map((step, index) => (
                     <motion.div
                       key={index}
@@ -421,7 +539,8 @@ export function ExplanationView({
           explanation &&
           explanationMode !== null &&
           !isStreaming &&
-          allStepsShown && (
+          allStepsShown &&
+          (!lesson.length || stage === "practice" || stage === "result") && (
             <motion.div
               initial={{ opacity: 0, y: 20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}

@@ -6,6 +6,7 @@ import { ExplainQuestionDto } from './dto/explain-question.dto.js';
 import { LearningService } from './learning.service.js';
 import { PracticeQuestionDto } from './dto/practice-question.dto.js';
 import { SubmitAttemptDto } from './dto/submit-attempt.dto.js';
+import { CheckTeachingAnswerDto } from './dto/check-teaching-answer.dto.js';
 
 @Controller('learning')
 @UseGuards(JwtAuthGuard)
@@ -26,6 +27,14 @@ export class LearningController {
     @Body() dto: PracticeQuestionDto,
   ) {
     return this.learningService.generatePracticeQuestion(user, dto);
+  }
+
+  @Post('teaching-check')
+  checkTeachingAnswer(
+    @CurrentUser() user: SafeUser,
+    @Body() dto: CheckTeachingAnswerDto,
+  ) {
+    return this.learningService.checkTeachingAnswer(user, dto);
   }
 
   @Post('attempts')

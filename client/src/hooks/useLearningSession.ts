@@ -5,9 +5,12 @@ import {
   submitPracticeAttempt,
   type PracticeAttemptResult,
   type PracticeQuestion,
+  checkTeachingAnswer,
+  type TeachingEvaluationResult,
+  type TeachingStep,
 } from '@/lib/api/ai';
 
-type SessionStage = 'input' | 'explanation' | 'practice' | 'result';
+type SessionStage = 'input' | 'teaching' | 'checking' | 'feedback' | 'practice' | 'result';
 type OperationStatus = 'idle' | 'loading' | 'success' | 'error';
 
 export interface LearningSession {
@@ -16,6 +19,12 @@ export interface LearningSession {
   grade: string;
   explanationMode: 'step-by-step' | 'direct' | null;
   explanation: string;
+  lesson: TeachingStep[];
+  currentTeachingStep: number;
+  learnerAnswer: string;
+  feedback: string;
+  teachingEvaluation: TeachingEvaluationResult | null;
+  teachingAttempt: number;
   practiceQuestion: PracticeQuestion | null;
   selectedAnswer: number | null;
   correctness: boolean | null;
@@ -28,6 +37,12 @@ const emptySession: LearningSession = {
   grade: '',
   explanationMode: null,
   explanation: '',
+  lesson: [],
+  currentTeachingStep: 0,
+  learnerAnswer: '',
+  feedback: '',
+  teachingEvaluation: null,
+  teachingAttempt: 0,
   practiceQuestion: null,
   selectedAnswer: null,
   correctness: null,
@@ -39,6 +54,7 @@ export function useLearningSession() {
   const [explanationStatus, setExplanationStatus] = useState<OperationStatus>('idle');
   const [practiceStatus, setPracticeStatus] = useState<OperationStatus>('idle');
   const [answerStatus, setAnswerStatus] = useState<OperationStatus>('idle');
+  const [teachingCheckStatus, setTeachingCheckStatus] = useState<OperationStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const practiceInFlight = useRef(false);
   const answerInFlight = useRef(false);
@@ -53,7 +69,7 @@ export function useLearningSession() {
 
   const requestExplanation = useCallback(async (mode: 'step-by-step' | 'direct', language: string) => {
     if (!session.question) return;
-    setSession((current) => ({ ...current, explanationMode: mode, explanation: '', practiceQuestion: null, selectedAnswer: null, correctness: null, stage: 'explanation' }));
+    setSession((current) => ({ ...current, explanationMode: mode, explanation: '', practiceQuestion: null, selectedAnswer: null, correctness: null, teachingEvaluation: null, teachingAttempt: 0, stage: 'explanation' }));
     setExplanationStatus('loading');
     setPracticeStatus('idle');
     setAnswerStatus('idle');
@@ -66,6 +82,7 @@ export function useLearningSession() {
       language,
       mode,
       onDelta: (text) => setSession((current) => ({ ...current, explanation: current.explanation + text })),
+      onLesson: (lesson) => setSession((current) => ({ ...current, lesson, stage: 'teaching' })),
       onDone: () => setExplanationStatus('success'),
       onError: (message) => {
         setExplanationStatus('error');
@@ -73,6 +90,52 @@ export function useLearningSession() {
       },
     });
   }, [session]);
+
+  const submitTeachingAnswer = useCallback(async (learnerAnswer: string, language: string) => {
+    const step = session.lesson[session.currentTeachingStep];
+    if (!step || teachingCheckStatus === 'loading' || teachingCheckStatus === 'success') return;
+    setSession((current) => ({ ...current, learnerAnswer, stage: 'checking' }));
+    setTeachingCheckStatus('loading');
+    setError(null);
+    try {
+      const result = await checkTeachingAnswer({
+        question: session.question,
+        subject: session.subject,
+        grade: session.grade,
+        language,
+        stepNumber: step.stepNumber,
+        checkQuestion: step.checkQuestion,
+        expectedAnswer: step.expectedAnswer,
+        learnerAnswer,
+        attemptNumber: session.teachingAttempt + 1,
+      });
+      setSession((current) => ({ ...current, teachingEvaluation: result, feedback: result.feedback, teachingAttempt: current.teachingAttempt + 1, stage: 'feedback' }));
+      setTeachingCheckStatus('success');
+    } catch (requestError) {
+      setTeachingCheckStatus('error');
+      setError(requestError instanceof Error ? requestError.message : 'Unable to evaluate your answer.');
+    }
+  }, [session, teachingCheckStatus]);
+
+  const setLearnerAnswer = useCallback((learnerAnswer: string) => {
+    setSession((current) => ({ ...current, learnerAnswer }));
+  }, []);
+
+  const nextTeachingStep = useCallback(() => {
+    if (session.teachingEvaluation?.status !== 'correct') return;
+    if (session.currentTeachingStep >= session.lesson.length - 1) {
+      setSession((current) => ({ ...current, stage: 'practice' }));
+      return;
+    }
+    setSession((current) => ({ ...current, currentTeachingStep: current.currentTeachingStep + 1, learnerAnswer: '', feedback: '', teachingEvaluation: null, teachingAttempt: 0, correctness: null, stage: 'teaching' }));
+    setTeachingCheckStatus('idle');
+  }, [session]);
+
+  const retryTeachingAnswer = useCallback(() => {
+    setSession((current) => ({ ...current, learnerAnswer: '', feedback: '', teachingEvaluation: null, stage: 'teaching' }));
+    setTeachingCheckStatus('idle');
+    setError(null);
+  }, []);
 
   const requestPractice = useCallback(async (language: string) => {
     if (!session.question || !session.explanationMode || !session.explanation) return;
@@ -138,11 +201,16 @@ export function useLearningSession() {
     explanationStatus,
     practiceStatus,
     answerStatus,
+    teachingCheckStatus,
     error,
     startSession,
     requestExplanation,
     requestPractice,
     submitAnswer,
+    submitTeachingAnswer,
+    setLearnerAnswer,
+    nextTeachingStep,
+    retryTeachingAnswer,
     resetSession,
   };
 }

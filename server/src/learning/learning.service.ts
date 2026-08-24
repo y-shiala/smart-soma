@@ -5,17 +5,22 @@ import { PracticeQuestionDto } from './dto/practice-question.dto.js';
 import { SubmitAttemptDto } from './dto/submit-attempt.dto.js';
 import { Grade } from '../../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { AiService } from '../ai/ai.service.js';
+import { CheckTeachingAnswerDto } from './dto/check-teaching-answer.dto.js';
+import type { TeachingStep } from '../ai/interfaces/ai-provider.interface.js';
 
 export interface ExplanationResponse {
   question: string;
   explanation: string;
   subject: string;
   grade: string;
+  steps: TeachingStep[];
 }
 
 export interface PracticeQuestionResponse {
   question: string;
   options: string[];
+  correctIndex: number;
   correctAnswer: string;
   hint: string;
   explanation: string;
@@ -32,29 +37,46 @@ export interface AttemptResponse {
 
 @Injectable()
 export class LearningService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly aiService: AiService,
+  ) { }
 
-  generateExplanation(_user: SafeUser, dto: ExplainQuestionDto): ExplanationResponse {
-    const explanation = [
-      `Let's solve this step by step for ${dto.subject} in grade ${dto.grade}.`,
-      '\n\nFirst, identify what the question is asking you to find.',
-      '\n\nThen, use the relevant method or formula and work carefully through each step.',
-      '\n\nFinally, check your answer to make sure it matches the question and units required.',
-    ].join('');
-
+  async generateExplanation(_user: SafeUser, dto: ExplainQuestionDto): Promise<ExplanationResponse> {
+    const result = await this.aiService.explain(dto);
     return {
       question: dto.question.trim(),
-      explanation,
+      explanation: result.explanation,
       subject: dto.subject.trim(),
       grade: dto.grade,
+      steps: result.steps,
     };
   }
 
-  generatePracticeQuestion(
+  async checkTeachingAnswer(_user: SafeUser, dto: CheckTeachingAnswerDto) {
+    return this.aiService.evaluateTeachingAnswer({
+      question: dto.question,
+      subject: dto.subject,
+      grade: dto.grade,
+      language: dto.language,
+      step: {
+        stepNumber: dto.stepNumber,
+        concept: '',
+        explanation: '',
+        checkQuestion: dto.checkQuestion,
+        expectedAnswer: dto.expectedAnswer,
+      },
+      learnerAnswer: dto.learnerAnswer,
+      attemptNumber: dto.attemptNumber,
+    });
+  }
+
+  async generatePracticeQuestion(
     _user: SafeUser,
     dto: PracticeQuestionDto,
-  ): PracticeQuestionResponse {
-    return createPracticeQuestion(dto.question, dto.subject, dto.grade);
+  ): Promise<PracticeQuestionResponse> {
+    const result = await this.aiService.createPracticeQuestion(dto);
+    return { ...result, correctIndex: result.options.indexOf(result.correctAnswer), subject: dto.subject.trim(), grade: dto.grade };
   }
 
   async submitAttempt(
@@ -117,6 +139,7 @@ function createPracticeQuestion(
   return {
     question: `Which step is most important when solving: ${topic.trim()}?`,
     options,
+    correctIndex: 0,
     correctAnswer: options[0],
     hint: 'Remember the steps you just learned! Think about what operation you need.',
     explanation: `For ${subject.trim()} in ${grade}, the best strategy is to understand the problem before solving it.`,

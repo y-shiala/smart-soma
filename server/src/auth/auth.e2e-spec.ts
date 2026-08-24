@@ -429,12 +429,45 @@ describe('Authentication (e2e)', () => {
       })
       .expect(201);
 
-    expect(explanation.body).toEqual({
-      question: 'What is 2 + 2?',
-      explanation: expect.stringContaining('mathematics'),
-      subject: 'mathematics',
-      grade: 'lower-primary',
-    });
+    expect(explanation.body.question).toBe('What is 2 + 2?');
+    expect(typeof explanation.body.explanation).toBe('string');
+    expect(explanation.body.explanation.trim()).not.toBe('');
+    expect(explanation.body.subject).toBe('mathematics');
+    expect(explanation.body.grade).toBe('lower-primary');
+    expect(Array.isArray(explanation.body.steps)).toBe(true);
+    expect(explanation.body.steps.length).toBeGreaterThan(0);
+    expect(explanation.body.steps[0]).toEqual(
+      expect.objectContaining({
+        stepNumber: expect.any(Number),
+        concept: expect.any(String),
+        explanation: expect.any(String),
+        checkQuestion: expect.any(String),
+        expectedAnswer: expect.any(String),
+      }),
+    );
+
+    const teachingCheck = await request(app.getHttpServer())
+      .post('/learning/teaching-check')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .send({
+        question: 'What is 2 + 2?',
+        subject: 'mathematics',
+        grade: 'lower-primary',
+        language: 'en',
+        stepNumber: explanation.body.steps[0].stepNumber,
+        checkQuestion: explanation.body.steps[0].checkQuestion,
+        expectedAnswer: explanation.body.steps[0].expectedAnswer,
+        learnerAnswer: explanation.body.steps[0].expectedAnswer,
+        attemptNumber: 1,
+      })
+      .expect(201);
+
+    expect(['correct', 'partial', 'incorrect', 'wrong_method', 'unclear']).toContain(teachingCheck.body.status);
+    expect(typeof teachingCheck.body.reasoningAssessment).toBe('string');
+    expect(typeof teachingCheck.body.feedback).toBe('string');
+    expect(teachingCheck.body.feedback.trim()).not.toBe('');
+    expect(['continue', 'retry', 'hint']).toContain(teachingCheck.body.nextAction);
+    expect(typeof teachingCheck.body.hint).toBe('string');
   });
 
   it('generates practice questions and persists server-evaluated attempts', async () => {
@@ -478,8 +511,20 @@ describe('Authentication (e2e)', () => {
       })
       .expect(201);
 
+    expect(typeof practice.body.question).toBe('string');
+    expect(practice.body.question.trim()).not.toBe('');
     expect(practice.body.options).toHaveLength(4);
-    expect(practice.body.correctAnswer).toBe(practice.body.options[0]);
+    expect(practice.body.options.every((option: unknown) => typeof option === 'string' && option.trim())).toBe(true);
+    expect(new Set(practice.body.options).size).toBe(4);
+    expect(typeof practice.body.correctAnswer).toBe('string');
+    expect(practice.body.options).toContain(practice.body.correctAnswer);
+    expect(typeof practice.body.hint).toBe('string');
+    expect(practice.body.hint.trim()).not.toBe('');
+    expect(typeof practice.body.explanation).toBe('string');
+    expect(practice.body.explanation.trim()).not.toBe('');
+    expect(practice.body.correctIndex).toBe(
+      practice.body.options.indexOf(practice.body.correctAnswer),
+    );
 
     await request(app.getHttpServer())
       .post('/learning/attempts')
