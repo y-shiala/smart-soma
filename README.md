@@ -225,4 +225,5 @@ Backend tests require a working test database configuration when the tested code
 
 ## License
 
-This project is currently marked as private and unlicensed in the package configuration.
+This project is currently shared publicly for portfolio and demonstration purposes. 
+All rights reserved unless otherwise stated.
